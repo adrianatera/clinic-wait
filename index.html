@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Clinic Wait Board</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,700&family=IBM+Plex+Mono:wght@500&display=swap">
+<!-- Supabase: the library that lets this page talk to the database -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- Draws the door-sign QR code -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<style>
+:root{
+  --bg:#F4F7FB; --surface:#FFFFFF; --ink:#0E1B2E; --muted:#56677F; --line:#DCE4EF;
+  --accent:#1457B8; --accent-ink:#FFFFFF; --accent-soft:#E5EEFB;
+  --warn:#9A5B00; --warn-soft:#FBEFD9;
+  --display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --body:"Atkinson Hyperlegible", system-ui, -apple-system, sans-serif;
+  --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0B1422; --surface:#121E31; --ink:#E8EEF7; --muted:#9DB0C9; --line:#22324D;
+  --accent:#6EA8FF; --accent-ink:#071427; --accent-soft:#16294A;
+  --warn:#F0B35A; --warn-soft:#33270F; color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:16px;line-height:1.5;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:calc(20px + env(safe-area-inset-top,0px));padding-bottom:calc(40px + env(safe-area-inset-bottom,0px))}
+.wrap{max-width:560px;margin:0 auto;display:grid;gap:20px}
+h1,h2{font-family:var(--display);text-wrap:balance;margin:0;line-height:1.1}
+h1{font-size:1.5rem}
+h2{font-size:1.1rem}
+.eyebrow{font-size:.75rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums}
+header{display:grid;gap:4px}
+.tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:4px}
+.tabs button{flex:1;border:0;background:transparent;color:var(--muted);font:700 .9rem var(--body);padding:10px 6px;border-radius:9px;cursor:pointer}
+.tabs button[aria-selected="true"]{background:var(--accent);color:var(--accent-ink)}
+button:focus-visible,input:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.board{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:24px 20px;display:grid;gap:14px}
+.big{font-family:var(--display);font-weight:700;font-size:clamp(3rem,15vw,4.75rem);line-height:1;letter-spacing:-.02em}
+.big small{font-size:.4em;font-weight:500;color:var(--muted);letter-spacing:0}
+.facts{display:flex;flex-wrap:wrap;gap:8px 18px;color:var(--muted);font-size:.95rem}
+.facts b{color:var(--ink)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:.85rem;font-weight:700;padding:4px 10px;border-radius:99px;background:var(--accent-soft);color:var(--accent);width:fit-content}
+.pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor}
+.pill.stale{background:var(--warn-soft);color:var(--warn)}
+.note{font-size:.9rem;color:var(--muted);margin:0}
+.warnbox{background:var(--warn-soft);color:var(--warn);border-radius:10px;padding:12px 14px;font-weight:700;font-size:.95rem}
+.btn{border:0;border-radius:12px;font:700 1rem var(--body);padding:14px 18px;cursor:pointer;background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line)}
+.btn.small{padding:8px 12px;font-size:.85rem;border-radius:9px}
+.btn:disabled{opacity:.5;cursor:default}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.stack{display:grid;gap:12px}
+label{font-weight:700;font-size:.9rem}
+input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.queue{list-style:none;margin:0;padding:0;display:grid}
+.queue li{display:grid;grid-template-columns:2rem 1fr auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line)}
+.queue li:first-child{border-top:0}
+.queue .who{min-width:0}
+.queue .who b{display:block;overflow-wrap:anywhere}
+.queue .who span{font-size:.8rem;color:var(--muted)}
+.queue .pos{font-family:var(--mono);color:var(--muted)}
+.empty{color:var(--muted);font-size:.95rem;padding:6px 0}
+.stepper{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.stepper:first-of-type{border-top:0}
+.stepper .ctl{display:flex;align-items:center;gap:8px}
+.stepper .ctl span{min-width:3.5ch;text-align:center;font-size:1.1rem}
+.qr{display:grid;grid-template-columns:120px 1fr;gap:16px;align-items:center}
+.code{background:#fff;border-radius:8px;padding:6px;line-height:0}
+.code svg{width:100%;height:auto}
+@media (max-width:380px){.qr{grid-template-columns:1fr}.qr .code{max-width:160px}}
+.offline{background:var(--warn-soft);color:var(--warn);padding:12px 14px;border-radius:10px;font-weight:700}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Walk-in clinic · live wait</div>
+    <h1>Harbor Walk-In Clinic</h1>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button role="tab" id="tab-public" data-view="public" aria-selected="true">Patients</button>
+    <button role="tab" id="tab-checkin" data-view="checkin" aria-selected="false">Check in</button>
+    <button role="tab" id="tab-staff" data-view="staff" aria-selected="false">Front desk</button>
+  </div>
+
+  <div id="offline" class="offline" hidden>Can't reach the wait-time database right now. Numbers may be out of date.</div>
+
+  <!-- PATIENTS -->
+  <section id="view-public" class="board" aria-live="polite">
+    <div class="eyebrow">Estimated wait right now</div>
+    <div class="big" id="pubWait">–</div>
+    <div class="facts">
+      <span><b class="num" id="pubWaiting">0</b> waiting</span>
+      <span><b class="num" id="pubDocs">–</b> doctors on shift</span>
+    </div>
+    <span class="pill" id="pubFresh">Connecting…</span>
+    <div class="warnbox" id="pubStale" hidden>This number hasn't been updated recently. Call the clinic to confirm before you head over.</div>
+    <p class="note">This is an estimate. Patients with urgent needs are seen first, so your wait may be longer.</p>
+  </section>
+
+  <!-- CHECK IN -->
+  <section id="view-checkin" class="board" hidden>
+    <div id="ciForm" class="stack">
+      <h2>Join the line</h2>
+      <p class="note">You'll see your place in line on this phone. A staff member will call your name.</p>
+      <div class="stack" style="gap:6px">
+        <label for="ciName">First name and last initial</label>
+        <input type="text" id="ciName" maxlength="40" autocomplete="off" placeholder="e.g. Maria G.">
+      </div>
+      <button class="btn" id="ciJoin">Check in</button>
+      <p class="note" id="ciErr" hidden></p>
+    </div>
+    <div id="ciDone" class="stack" hidden>
+      <div class="eyebrow">You're checked in, <span id="ciWho"></span></div>
+      <div class="big"><span class="num" id="ciPos">–</span><small> in line</small></div>
+      <div class="facts"><span>About <b id="ciWait">–</b> until you're called</span></div>
+      <p class="note" id="ciStatus">Keep this page open. It updates on its own.</p>
+      <button class="btn ghost small" id="ciLeave">I'm leaving, take me out of line</button>
+    </div>
+  </section>
+
+  <!-- SIGN -->
+  <section id="view-sign" hidden class="board" style="text-align:center;justify-items:center;gap:18px;padding-block:32px">
+    <div class="eyebrow">Harbor Walk-In Clinic</div>
+    <h2 style="font-size:clamp(1.6rem,7vw,2.2rem)">Scan to check in</h2>
+    <div class="code" id="qrBig" style="padding:10px;border-radius:12px;width:min(100%,320px)"></div>
+    <p class="note" style="max-width:32ch">See your place in line and the current wait on your phone. No phone? Check in at the front desk.</p>
+    <button class="btn ghost small" id="closeSign">Back to front desk</button>
+  </section>
+
+  <!-- FRONT DESK -->
+  <section id="view-staff" hidden class="stack" style="gap:16px">
+    <div class="board">
+      <div class="row" style="justify-content:space-between">
+        <div>
+          <div class="eyebrow">People waiting</div>
+          <div class="big num" id="stCount">0</div>
+        </div>
+        <button class="btn" id="stAdd">+ Desk check-in</button>
+      </div>
+      <div class="facts">
+        <span>Public estimate: <b id="stWait">–</b></span>
+        <span>Today: <b class="num" id="stQr">0</b> by QR, <b class="num" id="stDesk">0</b> at desk</span>
+      </div>
+      <span class="pill" id="stFresh">–</span>
+    </div>
+
+    <div class="board">
+      <h2>Line</h2>
+      <ul class="queue" id="stQueue"></ul>
+      <div class="empty" id="stEmpty">Nobody waiting. New check-ins from the QR code or the button above appear here.</div>
+    </div>
+
+    <div class="board">
+      <h2>Estimate settings</h2>
+      <div class="stepper">
+        <span>Minutes per patient</span>
+        <div class="ctl"><button class="btn ghost small" id="avgDown" aria-label="Fewer minutes">−</button><span class="num" id="avgVal">20</span><button class="btn ghost small" id="avgUp" aria-label="More minutes">+</button></div>
+      </div>
+      <div class="stepper">
+        <span>Doctors on shift</span>
+        <div class="ctl"><button class="btn ghost small" id="docDown" aria-label="Fewer doctors">−</button><span class="num" id="docVal">1</span><button class="btn ghost small" id="docUp" aria-label="More doctors">+</button></div>
+      </div>
+      <p class="note">Wait = people ahead × minutes per patient ÷ doctors. The Patients page warns visitors when nothing has changed for <span class="num">45</span> minutes.</p>
+    </div>
+
+    <div class="board">
+      <h2>Door sign</h2>
+      <div class="qr">
+        <div class="code" id="qrBox"></div>
+        <div class="stack" style="gap:10px">
+          <p class="note">Scanning it opens the Check in page. Each check-in joins the line above.</p>
+          <button class="btn small" id="openSign">Open full-size sign</button>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+// ============================================================
+// 1. CONNECTION — where the database lives and the public key
+//    (safe to publish; the database's house rules limit it)
+// ============================================================
+const SUPABASE_URL = "https://tgvcfpyhrhefewpxkmlv.supabase.co";
+const SUPABASE_KEY = "sb_publishable_qALhsAQsV3Zp-KlbpfBKeg_5vwr8FiI";
+const SITE_URL     = "https://adrianatera.github.io/clinic-wait/";
+const STALE_MIN    = 45;   // minutes without changes before the warning shows
+const REFRESH_SEC  = 10;   // how often the page re-checks the database
+
+const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
+const $ = id => document.getElementById(id);
+const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}},
+                set(k,v){try{localStorage.setItem(k,v)}catch(e){}},
+                del(k){try{localStorage.removeItem(k)}catch(e){}} };
+
+let state = { checkins: [], settings: { avg_min: 20, doctors: 1, updated_at: null } };
+
+// ============================================================
+// 2. VIEWS — which tab is showing
+// ============================================================
+function show(view){
+  ["public","checkin","staff","sign"].forEach(v => {
+    $("view-"+v).hidden = v !== view;
+    const t = $("tab-"+v); if (t) t.setAttribute("aria-selected", v === view);
+  });
+  document.querySelector(".tabs").hidden = view === "sign";
+  document.querySelector("header").hidden = view === "sign";
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => show(b.dataset.view));
+$("openSign").onclick = () => show("sign");
+$("closeSign").onclick = () => show("staff");
+const startView = location.hash.slice(1);
+show(["checkin","staff","sign"].includes(startView) ? startView : "public");
+
+// ============================================================
+// 3. MATH — turn the line into a wait estimate
+// ============================================================
+const t = iso => iso ? Date.parse(iso) : 0;
+const waiting = () => state.checkins.filter(c => c.status === "waiting").sort((a,b) => t(a.created_at) - t(b.created_at));
+const estimate = ahead => ahead * state.settings.avg_min / Math.max(1, state.settings.doctors);
+const fmt = mins => {
+  if (mins < 5) return "Under 5 min";
+  const r = Math.round(mins / 5) * 5, h = Math.floor(r / 60), m = r % 60;
+  return h ? `${h} hr${m ? " " + m + " min" : ""}` : `${m} min`;
+};
+const lastActivity = () => Math.max(t(state.settings.updated_at), ...state.checkins.map(c => t(c.updated_at)));
+const ago = ms => {
+  if (!ms) return "No updates yet today";
+  const m = Math.floor((Date.now() - ms) / 60000);
+  return m < 1 ? "Updated just now" : m < 60 ? `Updated ${m} min ago` : `Updated ${Math.floor(m/60)} hr ${m%60} min ago`;
+};
+
+// ============================================================
+// 4. RENDER — paint the numbers onto the page
+// ============================================================
+function render(){
+  const q = waiting(), last = lastActivity();
+  const stale = !last || (Date.now() - last) > STALE_MIN * 60000;
+  const est = q.length ? fmt(estimate(q.length)) : "No wait";
+
+  $("pubWait").textContent = est;
+  $("pubWaiting").textContent = q.length;
+  $("pubDocs").textContent = state.settings.doctors;
+  $("pubFresh").textContent = ago(last);
+  $("pubFresh").classList.toggle("stale", stale);
+  $("pubStale").hidden = !stale;
+
+  $("stCount").textContent = q.length;
+  $("stWait").textContent = est;
+  $("stFresh").textContent = ago(last);
+  $("stFresh").classList.toggle("stale", stale);
+  $("stQr").textContent = state.checkins.filter(c => c.source === "qr").length;
+  $("stDesk").textContent = state.checkins.filter(c => c.source === "desk").length;
+  $("avgVal").textContent = state.settings.avg_min;
+  $("docVal").textContent = state.settings.doctors;
+
+  const ul = $("stQueue"); ul.textContent = "";
+  $("stEmpty").hidden = q.length > 0;
+  q.forEach((c, i) => {
+    const li = document.createElement("li");
+    const pos = document.createElement("span"); pos.className = "pos"; pos.textContent = i + 1;
+    const who = document.createElement("div"); who.className = "who";
+    const b = document.createElement("b"); b.textContent = c.name || (c.source === "desk" ? "Desk walk-in" : "Patient");
+    const s = document.createElement("span");
+    s.textContent = `${c.source === "qr" ? "QR" : "Desk"} · ${new Date(t(c.created_at)).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`;
+    who.append(b, s);
+    const acts = document.createElement("div"); acts.className = "row"; acts.style.gap = "6px";
+    const call = document.createElement("button"); call.className = "btn small"; call.textContent = "Called back";
+    call.onclick = () => setStatus(c.id, "seen", call);
+    const left = document.createElement("button"); left.className = "btn ghost small"; left.textContent = "Left";
+    left.onclick = () => setStatus(c.id, "left", left);
+    acts.append(call, left);
+    li.append(pos, who, acts); ul.append(li);
+  });
+
+  // The patient's own check-in, remembered by this phone
+  const mine = store.get("myCheckin");
+  const me = mine && state.checkins.find(c => c.id === mine);
+  if (me && me.status === "waiting") {
+    const idx = q.findIndex(c => c.id === me.id);
+    $("ciForm").hidden = true; $("ciDone").hidden = false; $("ciLeave").hidden = false;
+    $("ciWho").textContent = me.name || "friend";
+    $("ciPos").textContent = "#" + (idx + 1);
+    $("ciWait").textContent = idx === 0 ? "a few minutes" : fmt(estimate(idx)).toLowerCase();
+    $("ciStatus").textContent = "Keep this page open. It updates on its own.";
+  } else if (me && me.status === "seen") {
+    $("ciForm").hidden = true; $("ciDone").hidden = false; $("ciLeave").hidden = true;
+    $("ciWho").textContent = me.name || "friend";
+    $("ciPos").textContent = "Now"; $("ciWait").textContent = "now";
+    $("ciStatus").textContent = "You've been called. Please head to the front desk.";
+  } else {
+    $("ciForm").hidden = false; $("ciDone").hidden = true;
+  }
+}
+
+// ============================================================
+// 5. READ — fetch today's line and the settings from the database
+// ============================================================
+async function load(){
+  if (!db) { $("offline").hidden = false; return; }
+  const today = new Date(); today.setHours(0,0,0,0);
+  const [lineRes, setRes] = await Promise.all([
+    db.from("checkins").select("*").gte("created_at", today.toISOString()),
+    db.from("settings").select("*").eq("id", 1).maybeSingle()
+  ]);
+  if (lineRes.error || setRes.error) { $("offline").hidden = false; console.error(lineRes.error || setRes.error); return; }
+  $("offline").hidden = true;
+  state.checkins = lineRes.data;
+  if (setRes.data) state.settings = setRes.data;
+  render();
+}
+
+// ============================================================
+// 6. WRITE — the actions people take
+// ============================================================
+async function addCheckin(source, name){
+  const { data, error } = await db.from("checkins")
+    .insert({ source, name: (name || "").trim().slice(0, 40) })
+    .select("id").single();
+  if (error) throw error;
+  return data.id;
+}
+async function setStatus(id, status, btn){
+  if (!db) return; btn.disabled = true;
+  const { error } = await db.from("checkins").update({ status }).eq("id", id);
+  if (error) { console.error(error); btn.disabled = false; return; }
+  await load();
+}
+let settingsBusy = false;
+async function changeSetting(key, delta, min, max){
+  if (!db || settingsBusy) return;
+  const next = Math.min(max, Math.max(min, state.settings[key] + delta));
+  if (next === state.settings[key]) return;
+  settingsBusy = true;
+  state.settings = { ...state.settings, [key]: next }; render();
+  const { error } = await db.from("settings").update({ [key]: next }).eq("id", 1);
+  if (error) console.error(error);
+  settingsBusy = false;
+  await load();
+}
+$("avgUp").onclick   = () => changeSetting("avg_min", 5, 5, 120);
+$("avgDown").onclick = () => changeSetting("avg_min", -5, 5, 120);
+$("docUp").onclick   = () => changeSetting("doctors", 1, 1, 12);
+$("docDown").onclick = () => changeSetting("doctors", -1, 1, 12);
+
+$("stAdd").onclick = async () => {
+  if (!db) return; $("stAdd").disabled = true;
+  try { await addCheckin("desk", ""); await load(); }
+  catch(e){ console.error(e); }
+  finally { $("stAdd").disabled = false; }
+};
+$("ciJoin").onclick = async () => {
+  if (!db) return;
+  const name = $("ciName").value;
+  if (!name.trim()) { $("ciErr").hidden = false; $("ciErr").textContent = "Add your first name so staff can call you."; return; }
+  $("ciJoin").disabled = true; $("ciErr").hidden = true;
+  try { const id = await addCheckin("qr", name); store.set("myCheckin", id); await load(); }
+  catch(e){ console.error(e); $("ciErr").hidden = false; $("ciErr").textContent = "Couldn't check you in. Please tell the front desk you're here."; }
+  finally { $("ciJoin").disabled = false; }
+};
+$("ciLeave").onclick = async () => {
+  const id = store.get("myCheckin"); if (!id) return;
+  await setStatus(id, "left", $("ciLeave"));
+  store.del("myCheckin"); $("ciLeave").disabled = false; render();
+};
+
+// ============================================================
+// 7. QR CODE — points phones to this site's Check in tab
+// ============================================================
+(function drawQR(){
+  if (typeof qrcode !== "function") return;
+  const qr = qrcode(0, "M"); qr.addData(SITE_URL + "#checkin"); qr.make();
+  const svg = qr.createSvgTag({ cellSize: 4, margin: 2, scalable: true });
+  $("qrBox").innerHTML = svg; $("qrBig").innerHTML = svg;
+})();
+
+// ============================================================
+// 8. START — load now, then re-check every few seconds
+// ============================================================
+render();
+load();
+setInterval(load, REFRESH_SEC * 1000);
+</script>
+</body>
+</html>
