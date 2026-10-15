@@ -75,6 +75,13 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
 .code svg{width:100%;height:auto}
 @media (max-width:380px){.qr{grid-template-columns:1fr}.qr .code{max-width:160px}}
 .offline{background:var(--warn-soft);color:var(--warn);padding:12px 14px;border-radius:10px;font-weight:700}
+input[type=email],input[type=password]{width:100%;font:1rem var(--body);padding:12px 14px;border-radius:10px;border:1px solid var(--line);background:var(--bg);color:var(--ink)}
+.range{font-size:clamp(2.4rem,11vw,3.75rem)}
+.jump{background:var(--accent-soft);color:var(--ink);border-radius:10px;padding:10px 14px;font-size:.95rem}
+.jump b{color:var(--accent)}
+footer{text-align:center}
+footer a{color:var(--muted);font-size:.85rem}
+.who-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;font-size:.9rem;color:var(--muted)}
 </style>
 </head>
 <body>
@@ -85,27 +92,27 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
   </header>
 
   <div class="tabs" role="tablist">
-    <button role="tab" id="tab-public" data-view="public" aria-selected="true">Patients</button>
+    <button role="tab" id="tab-public" data-view="public" aria-selected="true">Wait time</button>
     <button role="tab" id="tab-checkin" data-view="checkin" aria-selected="false">Check in</button>
-    <button role="tab" id="tab-staff" data-view="staff" aria-selected="false">Front desk</button>
   </div>
 
   <div id="offline" class="offline" hidden>Can't reach the wait-time database right now. Numbers may be out of date.</div>
 
-  <!-- PATIENTS -->
+  <!-- PATIENTS: WAIT TIME -->
   <section id="view-public" class="board" aria-live="polite">
     <div class="eyebrow">Estimated wait right now</div>
-    <div class="big" id="pubWait">–</div>
+    <div class="big range" id="pubWait">–</div>
     <div class="facts">
       <span><b class="num" id="pubWaiting">0</b> waiting</span>
       <span><b class="num" id="pubDocs">–</b> doctors on shift</span>
     </div>
+    <div class="jump" id="pubJump" hidden></div>
     <span class="pill" id="pubFresh">Connecting…</span>
     <div class="warnbox" id="pubStale" hidden>This number hasn't been updated recently. Call the clinic to confirm before you head over.</div>
     <p class="note">This is an estimate. Patients with urgent needs are seen first, so your wait may be longer.</p>
   </section>
 
-  <!-- CHECK IN -->
+  <!-- PATIENTS: CHECK IN -->
   <section id="view-checkin" class="board" hidden>
     <div id="ciForm" class="stack">
       <h2>Join the line</h2>
@@ -126,7 +133,25 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
     </div>
   </section>
 
-  <!-- SIGN -->
+  <!-- STAFF: SIGN IN -->
+  <section id="view-login" class="board" hidden>
+    <h2>Front desk sign in</h2>
+    <form id="loginForm" class="stack">
+      <div class="stack" style="gap:6px">
+        <label for="loginEmail">Email</label>
+        <input type="email" id="loginEmail" autocomplete="username" required>
+      </div>
+      <div class="stack" style="gap:6px">
+        <label for="loginPass">Password</label>
+        <input type="password" id="loginPass" autocomplete="current-password" required>
+      </div>
+      <button class="btn" id="loginBtn" type="submit">Sign in</button>
+      <p class="note" id="loginErr" hidden></p>
+    </form>
+    <button class="btn ghost small" id="loginBack" style="width:fit-content">Back to wait time</button>
+  </section>
+
+  <!-- STAFF: DOOR SIGN -->
   <section id="view-sign" hidden class="board" style="text-align:center;justify-items:center;gap:18px;padding-block:32px">
     <div class="eyebrow">Harbor Walk-In Clinic</div>
     <h2 style="font-size:clamp(1.6rem,7vw,2.2rem)">Scan to check in</h2>
@@ -135,8 +160,9 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
     <button class="btn ghost small" id="closeSign">Back to front desk</button>
   </section>
 
-  <!-- FRONT DESK -->
+  <!-- STAFF: FRONT DESK -->
   <section id="view-staff" hidden class="stack" style="gap:16px">
+    <div class="who-bar"><span>Signed in as <b id="staffEmail"></b></span><button class="btn ghost small" id="signOut">Sign out</button></div>
     <div class="board">
       <div class="row" style="justify-content:space-between">
         <div>
@@ -146,7 +172,7 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
         <button class="btn" id="stAdd">+ Desk check-in</button>
       </div>
       <div class="facts">
-        <span>Public estimate: <b id="stWait">–</b></span>
+        <span>Patients see: <b id="stWait">–</b></span>
         <span>Today: <b class="num" id="stQr">0</b> by QR, <b class="num" id="stDesk">0</b> at desk</span>
       </div>
       <span class="pill" id="stFresh">–</span>
@@ -168,7 +194,7 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
         <span>Doctors on shift</span>
         <div class="ctl"><button class="btn ghost small" id="docDown" aria-label="Fewer doctors">−</button><span class="num" id="docVal">1</span><button class="btn ghost small" id="docUp" aria-label="More doctors">+</button></div>
       </div>
-      <p class="note">Wait = people ahead × minutes per patient ÷ doctors. The Patients page warns visitors when nothing has changed for <span class="num">45</span> minutes.</p>
+      <p class="note">Patients see a range around: people ahead × minutes per patient ÷ doctors. They get a warning when nothing has changed for <span class="num">45</span> minutes.</p>
     </div>
 
     <div class="board">
@@ -182,18 +208,22 @@ input[type=text]{width:100%;font:1rem var(--body);padding:12px 14px;border-radiu
       </div>
     </div>
   </section>
+
+  <footer id="staffLink"><a href="#staff">Clinic staff sign in</a></footer>
 </div>
 
 <script>
 // ============================================================
-// 1. CONNECTION — where the database lives and the public key
-//    (safe to publish; the database's house rules limit it)
+// 1. CONNECTION — where the database lives and the public key.
+//    The public key can only use four narrow "doors" (database
+//    functions). Names and settings need a staff sign-in.
 // ============================================================
 const SUPABASE_URL = "https://tgvcfpyhrhefewpxkmlv.supabase.co";
 const SUPABASE_KEY = "sb_publishable_qALhsAQsV3Zp-KlbpfBKeg_5vwr8FiI";
 const SITE_URL     = "https://adrianatera.github.io/clinic-wait/";
 const STALE_MIN    = 45;   // minutes without changes before the warning shows
 const REFRESH_SEC  = 10;   // how often the page re-checks the database
+const JUMP_MIN     = 15;   // a change this big gets an explanation
 
 const db = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY) : null;
 const $ = id => document.getElementById(id);
@@ -201,76 +231,146 @@ const store = { get(k){try{return localStorage.getItem(k)}catch(e){return null}}
                 set(k,v){try{localStorage.setItem(k,v)}catch(e){}},
                 del(k){try{localStorage.removeItem(k)}catch(e){}} };
 
-let state = { checkins: [], settings: { avg_min: 20, doctors: 1, updated_at: null } };
+let board = null;      // public numbers: waiting, avg_min, doctors, last_update, server_now
+let mySpot = null;     // this phone's check-in: status, name, position
+let staff = null;      // signed-in staff user, or null
+let line = [];         // full line, staff only
+let readings = [];     // recent estimates, to explain big jumps
 
 // ============================================================
-// 2. VIEWS — which tab is showing
+// 2. VIEWS — which screen is showing
 // ============================================================
+const PUBLIC_VIEWS = ["public", "checkin"];
 function show(view){
-  ["public","checkin","staff","sign"].forEach(v => {
-    $("view-"+v).hidden = v !== view;
-    const t = $("tab-"+v); if (t) t.setAttribute("aria-selected", v === view);
-  });
-  document.querySelector(".tabs").hidden = view === "sign";
+  if (view === "staff" && !staff) view = "login";
+  ["public","checkin","login","staff","sign"].forEach(v => $("view-"+v).hidden = v !== view);
+  PUBLIC_VIEWS.forEach(v => $("tab-"+v).setAttribute("aria-selected", v === view));
+  const isPublic = PUBLIC_VIEWS.includes(view);
+  document.querySelector(".tabs").hidden = !isPublic;
+  $("staffLink").hidden = !isPublic;
   document.querySelector("header").hidden = view === "sign";
+  current = view;
 }
-document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => show(b.dataset.view));
+let current = "public";
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => { history_replace(""); show(b.dataset.view); });
 $("openSign").onclick = () => show("sign");
 $("closeSign").onclick = () => show("staff");
-const startView = location.hash.slice(1);
-show(["checkin","staff","sign"].includes(startView) ? startView : "public");
+$("loginBack").onclick = () => { history_replace(""); show("public"); };
+function history_replace(hash){ try { window.history.replaceState(null, "", hash ? "#" + hash : location.pathname); } catch(e){} }
+window.addEventListener("hashchange", () => routeFromHash());
+function routeFromHash(){
+  const h = location.hash.slice(1);
+  show(["checkin","staff","sign"].includes(h) ? h : "public");
+}
 
 // ============================================================
-// 3. MATH — turn the line into a wait estimate
+// 3. MATH — turn the line into an honest range, not a fake-exact number
 // ============================================================
-const t = iso => iso ? Date.parse(iso) : 0;
-const waiting = () => state.checkins.filter(c => c.status === "waiting").sort((a,b) => t(a.created_at) - t(b.created_at));
-const estimate = ahead => ahead * state.settings.avg_min / Math.max(1, state.settings.doctors);
-const fmt = mins => {
-  if (mins < 5) return "Under 5 min";
-  const r = Math.round(mins / 5) * 5, h = Math.floor(r / 60), m = r % 60;
-  return h ? `${h} hr${m ? " " + m + " min" : ""}` : `${m} min`;
-};
-const lastActivity = () => Math.max(t(state.settings.updated_at), ...state.checkins.map(c => t(c.updated_at)));
-const ago = ms => {
-  if (!ms) return "No updates yet today";
-  const m = Math.floor((Date.now() - ms) / 60000);
+const round5 = m => Math.max(5, Math.round(m / 5) * 5);
+const minutes = (ahead, b) => ahead * b.avg_min / Math.max(1, b.doctors);
+function fmtMin(m){
+  const h = Math.floor(m / 60), r = m % 60;
+  return h ? `${h} hr${r ? " " + r : ""}` : `${r} min`;
+}
+function fmtRange(ahead, b){
+  if (ahead <= 0) return "No wait";
+  const mid = minutes(ahead, b);
+  const lo = round5(mid * 0.8), hi = Math.max(lo + 5, round5(mid * 1.25));
+  if (hi <= 10) return "Under 10 min";
+  if (hi < 60) return `${lo}–${hi} min`;
+  return `${fmtMin(lo)} – ${fmtMin(hi)}${hi % 60 ? " min" : ""}`;
+}
+// Freshness uses the database's clock, so a phone with the wrong time can't confuse it
+function minsSinceUpdate(b){
+  if (!b || !b.last_update) return null;
+  return Math.max(0, Math.floor((Date.parse(b.server_now) - Date.parse(b.last_update)) / 60000));
+}
+function agoText(b){
+  const m = minsSinceUpdate(b);
+  if (m === null) return "No updates yet";
   return m < 1 ? "Updated just now" : m < 60 ? `Updated ${m} min ago` : `Updated ${Math.floor(m/60)} hr ${m%60} min ago`;
-};
+}
+const isStale = b => { const m = minsSinceUpdate(b); return m === null || m > STALE_MIN; };
+
+// Explain big jumps: compare now with the oldest reading from the last 15 minutes
+function jumpNote(b){
+  const now = Date.now(), mid = minutes(b.waiting, b);
+  readings.push({ t: now, mid, waiting: b.waiting, doctors: b.doctors });
+  readings = readings.filter(h => now - h.t <= 15 * 60000);
+  const first = readings[0];
+  const diff = mid - first.mid;
+  if (Math.abs(diff) < JUMP_MIN) return "";
+  if (diff > 0) {
+    if (b.doctors < first.doctors) return `<b>Wait went up.</b> A doctor went off shift, so the line is moving slower.`;
+    if (b.waiting > first.waiting) return `<b>Wait went up.</b> ${b.waiting - first.waiting} more people arrived in the last few minutes.`;
+    return `<b>Wait went up.</b> The clinic adjusted its time per patient.`;
+  }
+  if (b.doctors > first.doctors) return `<b>Wait went down.</b> Another doctor started their shift.`;
+  return `<b>Wait went down.</b> The line is moving faster than before.`;
+}
 
 // ============================================================
 // 4. RENDER — paint the numbers onto the page
 // ============================================================
-function render(){
-  const q = waiting(), last = lastActivity();
-  const stale = !last || (Date.now() - last) > STALE_MIN * 60000;
-  const est = q.length ? fmt(estimate(q.length)) : "No wait";
-
-  $("pubWait").textContent = est;
-  $("pubWaiting").textContent = q.length;
-  $("pubDocs").textContent = state.settings.doctors;
-  $("pubFresh").textContent = ago(last);
+function renderPublic(){
+  if (!board) return;
+  const stale = isStale(board);
+  $("pubWait").textContent = fmtRange(board.waiting, board);
+  $("pubWaiting").textContent = board.waiting;
+  $("pubDocs").textContent = board.doctors;
+  $("pubFresh").textContent = agoText(board);
   $("pubFresh").classList.toggle("stale", stale);
   $("pubStale").hidden = !stale;
+  const note = jumpNote(board);
+  $("pubJump").hidden = !note;
+  $("pubJump").innerHTML = note;
+}
 
-  $("stCount").textContent = q.length;
-  $("stWait").textContent = est;
-  $("stFresh").textContent = ago(last);
-  $("stFresh").classList.toggle("stale", stale);
-  $("stQr").textContent = state.checkins.filter(c => c.source === "qr").length;
-  $("stDesk").textContent = state.checkins.filter(c => c.source === "desk").length;
-  $("avgVal").textContent = state.settings.avg_min;
-  $("docVal").textContent = state.settings.doctors;
+function renderMySpot(){
+  if (mySpot && mySpot.status === "waiting") {
+    $("ciForm").hidden = true; $("ciDone").hidden = false; $("ciLeave").hidden = false;
+    $("ciLeave").textContent = "I'm leaving, take me out of line";
+    $("ciWho").textContent = mySpot.name || "friend";
+    $("ciPos").textContent = "#" + mySpot.position;
+    $("ciWait").textContent = board ? (mySpot.position === 1 ? "a few minutes" : fmtRange(mySpot.position - 1, board).toLowerCase()) : "–";
+    $("ciStatus").textContent = "Keep this page open. It updates on its own.";
+  } else if (mySpot && mySpot.status === "seen") {
+    $("ciForm").hidden = true; $("ciDone").hidden = false; $("ciLeave").hidden = false;
+    $("ciLeave").textContent = "Done, clear this phone";
+    $("ciWho").textContent = mySpot.name || "friend";
+    $("ciPos").textContent = "Now"; $("ciWait").textContent = "no more time";
+    $("ciStatus").textContent = "You've been called. Please head to the front desk.";
+  } else {
+    $("ciForm").hidden = false; $("ciDone").hidden = true;
+  }
+}
+
+function renderStaff(){
+  if (!staff || !board) return;
+  const waiting = line.filter(c => c.status === "waiting").sort((a,b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+  const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  const today = line.filter(c => Date.parse(c.created_at) >= startOfDay.getTime());
+  $("staffEmail").textContent = staff.email;
+  $("stCount").textContent = waiting.length;
+  $("stWait").textContent = fmtRange(waiting.length, board);
+  $("stFresh").textContent = agoText(board);
+  $("stFresh").classList.toggle("stale", isStale(board));
+  $("stQr").textContent = today.filter(c => c.source === "qr").length;
+  $("stDesk").textContent = today.filter(c => c.source === "desk").length;
+  $("avgVal").textContent = board.avg_min;
+  $("docVal").textContent = board.doctors;
 
   const ul = $("stQueue"); ul.textContent = "";
-  $("stEmpty").hidden = q.length > 0;
-  q.forEach((c, i) => {
+  $("stEmpty").hidden = waiting.length > 0;
+  waiting.forEach((c, i) => {
     const li = document.createElement("li");
     const pos = document.createElement("span"); pos.className = "pos"; pos.textContent = i + 1;
     const who = document.createElement("div"); who.className = "who";
     const b = document.createElement("b"); b.textContent = c.name || (c.source === "desk" ? "Desk walk-in" : "Patient");
     const s = document.createElement("span");
-    s.textContent = `${c.source === "qr" ? "QR" : "Desk"} · ${new Date(t(c.created_at)).toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`;
+    const when = new Date(Date.parse(c.created_at));
+    const sameDay = when >= startOfDay;
+    s.textContent = `${c.source === "qr" ? "QR" : "Desk"} · ${sameDay ? "" : "yesterday "}${when.toLocaleTimeString([], {hour:"numeric",minute:"2-digit"})}`;
     who.append(b, s);
     const acts = document.createElement("div"); acts.className = "row"; acts.style.gap = "6px";
     const call = document.createElement("button"); call.className = "btn small"; call.textContent = "Called back";
@@ -280,100 +380,134 @@ function render(){
     acts.append(call, left);
     li.append(pos, who, acts); ul.append(li);
   });
-
-  // The patient's own check-in, remembered by this phone
-  const mine = store.get("myCheckin");
-  const me = mine && state.checkins.find(c => c.id === mine);
-  if (me && me.status === "waiting") {
-    const idx = q.findIndex(c => c.id === me.id);
-    $("ciForm").hidden = true; $("ciDone").hidden = false; $("ciLeave").hidden = false;
-    $("ciWho").textContent = me.name || "friend";
-    $("ciPos").textContent = "#" + (idx + 1);
-    $("ciWait").textContent = idx === 0 ? "a few minutes" : fmt(estimate(idx)).toLowerCase();
-    $("ciStatus").textContent = "Keep this page open. It updates on its own.";
-  } else if (me && me.status === "seen") {
-    $("ciForm").hidden = true; $("ciDone").hidden = false; $("ciLeave").hidden = true;
-    $("ciWho").textContent = me.name || "friend";
-    $("ciPos").textContent = "Now"; $("ciWait").textContent = "now";
-    $("ciStatus").textContent = "You've been called. Please head to the front desk.";
-  } else {
-    $("ciForm").hidden = false; $("ciDone").hidden = true;
-  }
 }
 
 // ============================================================
-// 5. READ — fetch today's line and the settings from the database
+// 5. READ — what each kind of visitor is allowed to fetch
 // ============================================================
-async function load(){
+async function loadPublic(){
+  const { data, error } = await db.rpc("get_board");
+  if (error) throw error;
+  board = data;
+  renderPublic();
+}
+async function loadMySpot(){
+  const id = store.get("myCheckin");
+  if (!id) { mySpot = null; renderMySpot(); return; }
+  const { data, error } = await db.rpc("get_my_spot", { p_id: id });
+  if (error) throw error;
+  mySpot = data;                                  // null if the check-in no longer exists
+  if (!mySpot || mySpot.status === "left") { store.del("myCheckin"); mySpot = null; }
+  renderMySpot();
+}
+async function loadStaff(){
+  if (!staff) return;
+  // Everyone still waiting (even from before midnight) plus today's check-ins for the counts
+  const startOfDay = new Date(); startOfDay.setHours(0,0,0,0);
+  const { data, error } = await db.from("checkins").select("*")
+    .or(`status.eq.waiting,created_at.gte."${startOfDay.toISOString()}"`);
+  if (error) throw error;
+  line = data;
+  renderStaff();
+}
+async function refresh(){
   if (!db) { $("offline").hidden = false; return; }
-  const today = new Date(); today.setHours(0,0,0,0);
-  const [lineRes, setRes] = await Promise.all([
-    db.from("checkins").select("*").gte("created_at", today.toISOString()),
-    db.from("settings").select("*").eq("id", 1).maybeSingle()
-  ]);
-  if (lineRes.error || setRes.error) { $("offline").hidden = false; console.error(lineRes.error || setRes.error); return; }
-  $("offline").hidden = true;
-  state.checkins = lineRes.data;
-  if (setRes.data) state.settings = setRes.data;
-  render();
+  try {
+    await loadPublic();
+    await loadMySpot();
+    await loadStaff();
+    $("offline").hidden = true;
+  } catch (e) {
+    console.error(e);
+    $("offline").hidden = false;
+  }
 }
 
 // ============================================================
 // 6. WRITE — the actions people take
 // ============================================================
-async function addCheckin(source, name){
-  const { data, error } = await db.from("checkins")
-    .insert({ source, name: (name || "").trim().slice(0, 40) })
-    .select("id").single();
-  if (error) throw error;
-  return data.id;
-}
-async function setStatus(id, status, btn){
-  if (!db) return; btn.disabled = true;
-  const { error } = await db.from("checkins").update({ status }).eq("id", id);
-  if (error) { console.error(error); btn.disabled = false; return; }
-  await load();
-}
-let settingsBusy = false;
-async function changeSetting(key, delta, min, max){
-  if (!db || settingsBusy) return;
-  const next = Math.min(max, Math.max(min, state.settings[key] + delta));
-  if (next === state.settings[key]) return;
-  settingsBusy = true;
-  state.settings = { ...state.settings, [key]: next }; render();
-  const { error } = await db.from("settings").update({ [key]: next }).eq("id", 1);
-  if (error) console.error(error);
-  settingsBusy = false;
-  await load();
-}
-$("avgUp").onclick   = () => changeSetting("avg_min", 5, 5, 120);
-$("avgDown").onclick = () => changeSetting("avg_min", -5, 5, 120);
-$("docUp").onclick   = () => changeSetting("doctors", 1, 1, 12);
-$("docDown").onclick = () => changeSetting("doctors", -1, 1, 12);
-
-$("stAdd").onclick = async () => {
-  if (!db) return; $("stAdd").disabled = true;
-  try { await addCheckin("desk", ""); await load(); }
-  catch(e){ console.error(e); }
-  finally { $("stAdd").disabled = false; }
-};
 $("ciJoin").onclick = async () => {
   if (!db) return;
-  const name = $("ciName").value;
-  if (!name.trim()) { $("ciErr").hidden = false; $("ciErr").textContent = "Add your first name so staff can call you."; return; }
+  const name = $("ciName").value.trim();
+  if (!name) { $("ciErr").hidden = false; $("ciErr").textContent = "Add your first name so staff can call you."; return; }
   $("ciJoin").disabled = true; $("ciErr").hidden = true;
-  try { const id = await addCheckin("qr", name); store.set("myCheckin", id); await load(); }
-  catch(e){ console.error(e); $("ciErr").hidden = false; $("ciErr").textContent = "Couldn't check you in. Please tell the front desk you're here."; }
-  finally { $("ciJoin").disabled = false; }
+  const { data, error } = await db.rpc("join_line", { p_name: name });
+  $("ciJoin").disabled = false;
+  if (error) {
+    console.error(error);
+    $("ciErr").hidden = false;
+    $("ciErr").textContent = (error.message || "").includes("too_busy")
+      ? "Lots of people are checking in right now. Please wait a minute and try again, or check in at the front desk."
+      : "Couldn't check you in. Please tell the front desk you're here.";
+    return;
+  }
+  store.set("myCheckin", data);
+  await refresh();
 };
 $("ciLeave").onclick = async () => {
-  const id = store.get("myCheckin"); if (!id) return;
-  await setStatus(id, "left", $("ciLeave"));
-  store.del("myCheckin"); $("ciLeave").disabled = false; render();
+  const id = store.get("myCheckin"); if (!id || !db) return;
+  $("ciLeave").disabled = true;
+  if (!mySpot || mySpot.status === "waiting") await db.rpc("leave_line", { p_id: id });
+  store.del("myCheckin"); $("ciLeave").disabled = false;
+  await refresh();
+};
+
+$("stAdd").onclick = async () => {
+  $("stAdd").disabled = true;
+  const { error } = await db.from("checkins").insert({ source: "desk", name: "" });
+  if (error) console.error(error);
+  $("stAdd").disabled = false;
+  await refresh();
+};
+async function setStatus(id, status, btn){
+  btn.disabled = true;
+  // Only changes someone who is still waiting, so two receptionists tapping at once is harmless
+  const { error } = await db.from("checkins").update({ status }).eq("id", id).eq("status", "waiting");
+  if (error) { console.error(error); btn.disabled = false; return; }
+  await refresh();
+}
+// The database adds or subtracts in one step, so simultaneous taps both count
+async function adjust(field, delta){
+  const { error } = await db.rpc("adjust_setting", { p_field: field, p_delta: delta });
+  if (error) console.error(error);
+  await refresh();
+}
+$("avgUp").onclick   = () => adjust("avg_min", 5);
+$("avgDown").onclick = () => adjust("avg_min", -5);
+$("docUp").onclick   = () => adjust("doctors", 1);
+$("docDown").onclick = () => adjust("doctors", -1);
+
+// ============================================================
+// 7. STAFF SIGN IN
+// ============================================================
+$("loginForm").addEventListener("submit", async e => {
+  e.preventDefault();
+  $("loginBtn").disabled = true; $("loginErr").hidden = true;
+  const { data, error } = await db.auth.signInWithPassword({ email: $("loginEmail").value.trim(), password: $("loginPass").value });
+  $("loginBtn").disabled = false;
+  if (error) { $("loginErr").hidden = false; $("loginErr").textContent = "That email and password didn't match. Try again."; return; }
+  await afterSignIn(data.user);
+});
+async function afterSignIn(user){
+  staff = user;
+  // Confirm this account is on the staff list before showing the front desk
+  const { data: ok } = await db.rpc("is_staff");
+  if (!ok) {
+    await db.auth.signOut(); staff = null;
+    $("loginErr").hidden = false; $("loginErr").textContent = "This account isn't on the clinic's staff list.";
+    show("login"); return;
+  }
+  $("loginPass").value = "";
+  show("staff");
+  await refresh();
+}
+$("signOut").onclick = async () => {
+  await db.auth.signOut(); staff = null; line = [];
+  history_replace(""); show("public");
 };
 
 // ============================================================
-// 7. QR CODE — points phones to this site's Check in tab
+// 8. QR CODE — points phones to this site's Check in tab
 // ============================================================
 (function drawQR(){
   if (typeof qrcode !== "function") return;
@@ -383,11 +517,22 @@ $("ciLeave").onclick = async () => {
 })();
 
 // ============================================================
-// 8. START — load now, then re-check every few seconds
+// 9. START — restore a staff session if there is one, then keep refreshing
 // ============================================================
-render();
-load();
-setInterval(load, REFRESH_SEC * 1000);
+(async () => {
+  routeFromHash();
+  if (db) {
+    const { data } = await db.auth.getSession();
+    if (data && data.session) {
+      staff = data.session.user;
+      const { data: ok } = await db.rpc("is_staff");
+      if (!ok) { await db.auth.signOut(); staff = null; }
+    }
+    routeFromHash();
+  }
+  await refresh();
+  setInterval(refresh, REFRESH_SEC * 1000);
+})();
 </script>
 </body>
 </html>
